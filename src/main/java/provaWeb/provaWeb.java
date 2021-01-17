@@ -1,10 +1,15 @@
 package provaWeb;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import java.beans.XMLEncoder;
 import java.math.BigDecimal;
 import java.io.*;
 import java.net.*;
+import static java.lang.System.out;
+import java.sql.*;
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 /**
  *
  * @author qukaj
@@ -39,7 +44,7 @@ public class provaWeb implements Runnable{
 				provaWeb myServer = new provaWeb(serverConnect.accept());
 				
 				if (verbose) {
-					System.out.println("Connecton opened. (" + new Date() + ")");
+					System.out.println("Connecton opened. ");
 				}
 				
 				// create dedicated thread to manage the client connection
@@ -89,7 +94,6 @@ public class provaWeb implements Runnable{
 				// we send HTTP Headers with data to client
 				out.println("HTTP/1.1 501 Not Implemented");
 				out.println("Server: Java HTTP Server from SSaurel : 1.0");
-				out.println("Date: " + new Date());
 				out.println("Content-type: " + contentMimeType);
 				out.println("Content-length: " + fileLength);
 				out.println(); // blank line between headers and content, very important !
@@ -98,12 +102,22 @@ public class provaWeb implements Runnable{
 				dataOut.write(fileData, 0, fileLength);
 				dataOut.flush();
 				
-			} else {
+			}
+                        
+                        else {
 				// GET or HEAD method
 				if (fileRequested.endsWith("/")) {
 					fileRequested += DEFAULT_FILE;
                                 }
-				
+                                else  if(fileRequested.endsWith("/db")){
+                                   db(fileRequested);
+                                }
+                                else  if(fileRequested.endsWith("/db/xml")){
+                                   dbX(fileRequested);
+                                }
+                                else  if(fileRequested.endsWith("/db/json")){
+                                   dbJ(fileRequested);
+                                }
 				File file = new File(WEB_ROOT, fileRequested);
 				int fileLength = (int) file.length();
 				String content = getContentType(fileRequested);
@@ -114,7 +128,6 @@ public class provaWeb implements Runnable{
 					// send HTTP Headers
 					out.println("HTTP/1.1 200 OK");
 					out.println("Server: Java HTTP Server from SSaurel : 1.0");
-					out.println("Date: " + new Date());
 					out.println("Content-type: " + content);
 					out.println("Content-length: " + fileLength);
 					out.println(); // blank line between headers and content, very important !
@@ -131,15 +144,11 @@ public class provaWeb implements Runnable{
 			}
 			
 		} catch (FileNotFoundException fnfe) {
-			try {
-				fileNotFound(out, dataOut, fileRequested);
-			} catch (IOException ioe) {
-				System.err.println("Error with file not found exception : " + ioe.getMessage());
-			}
-			
 		} catch (IOException ioe) {
 			System.err.println("Server error : " + ioe);
-		} finally {
+       } catch (SQLException ex) {
+           Logger.getLogger(provaWeb.class.getName()).log(Level.SEVERE, null, ex);
+       } finally {
 			try {
 				in.close();
 				out.close();
@@ -180,34 +189,34 @@ public class provaWeb implements Runnable{
 	}
 	
 	private void fileNotFound(PrintWriter out, OutputStream dataOut, String fileRequested) throws IOException {
-            if(fileRequested.endsWith("/puntiVendita.json")){
-                ObjectMapper mapper = new ObjectMapper();
-                puntiVendita p = mapper.readValue(new File("puntiVendita.json"), puntiVendita.class);
-                XmlMapper xmlMapper = new XmlMapper();
-                xmlMapper.writeValue(new File("puntiVendita.xml"), p);
-                File fileinxml = new File("puntiVendita.xml");
-                
-                File file = new File(WEB_ROOT, FILE_MOVE);
-		int fileLength = (int) file.length();
-		String content = "text/html";
-		byte[] fileData = readFileData(file, fileLength);
+            if ((fileRequested.endsWith("/puntiVendita.xml")))  //file JSON e XML
+                {
+                     ObjectMapper mapper = new ObjectMapper();
+                            puntiVendita p = mapper.readValue(new File("puntiVendita.json"), puntiVendita.class);
+                            XmlMapper xmlMapper = new XmlMapper();
+                            xmlMapper.writeValue(new File("puntiVendita.xml"), p);
+                            File fileinxml = new File("puntiVendita.xml");
+                            File file = new File(WEB_ROOT,FILE_NOT_FOUND);
+                            int fileLength = (int) file.length();
+                            String content = "application/xml";
+                            String xml = xmlMapper.writeValueAsString(p);
 		
-		out.println("HTTP/1.1 200 OK");
-		out.println("Server: Java HTTP Server from SSaurel : 1.0");
-		out.println("Date: " + new Date());
-		out.println("Content-type: " + content);
-		out.println("Content-length: " + fileLength);
-		out.println(); // blank line between headers and content, very important !
-		out.flush(); // flush character output stream buffer
-                                        
-                dataOut.write(fileData, 0, fileLength);
-		dataOut.flush();
+                            out.println("HTTP/1.1 200 OK");
+                            out.println("Server: Java HTTP Server from SSaurel : 1.0");
+                          // out.println("Date: " + new Date());
+                            out.println("Content-type: " + content);
+                            out.println("Content-length: " + xml.length());
+                            out.println(); // blank line between headers and content, very important !
+                            out.flush(); // flush character output stream buffer
+                            
+                            out.write(xml);
+                            out.flush();
 		
-		if (verbose) {
-			System.out.println("File " + fileRequested + " not found");
-		} 
-            }
-            else if(!(fileRequested.endsWith("/"))  || (fileRequested.endsWith(".html"))){
+                            if (verbose) {
+                                System.out.println("File " + fileRequested + " not found");
+                            } 
+                }
+            if((fileRequested.endsWith("/"))  || (fileRequested.endsWith(".html")) || (fileRequested.endsWith(".xml"))){
                
                 File file = new File(WEB_ROOT, FILE_MOVE);
 		int fileLength = (int) file.length();
@@ -216,7 +225,6 @@ public class provaWeb implements Runnable{
 		
 		out.println("HTTP/1.1 301 Moved Permanently");
 		out.println("Server: Java HTTP Server from SSaurel : 1.0");
-		out.println("Date: " + new Date());
 		out.println("Content-type: " + content);
 		out.println("Content-length: " + fileLength);
 		out.println("Location: " + fileRequested + "/");
@@ -238,7 +246,6 @@ public class provaWeb implements Runnable{
 		
 		out.println("HTTP/1.1 404 not found");
 		out.println("Server: Java HTTP Server from SSaurel : 1.0");
-		out.println("Date: " + new Date());
 		out.println("Content-type: " + content);
 		out.println("Content-length: " + fileLength);
                 out.println(); // blank line between headers and content, very important !
@@ -252,4 +259,122 @@ public class provaWeb implements Runnable{
 		}    
             }
 	}
+        private void db(String fileRequested)throws SQLException{
+                 persona p = new persona();
+        System.setProperty("jdbc.drivers", "sun.jdbc.odbc.JdbcOdbcDriver");
+        
+        String URL_miodb = "jdbc:mysql://localhost:3306/db?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC";
+        String query = "SELECT nome, cognome FROM bd;";
+        Connection connessione = null;
+     System.out.println("Connessione con: " + URL_miodb);
+     try{
+        connessione = DriverManager.getConnection(URL_miodb, "root", "albania02");
+     }catch(Exception e){
+         System.out.println("Errore : " + e);
+         System.exit(1);
+     }
+     
+     try{
+         Statement state = connessione.createStatement();
+         ResultSet resultSet = state.executeQuery(query);
+         System.out.println(resultSet);
+       while (resultSet.next()) {
+             for (int i = 1; i <= 2; i++){
+                 System.out.println(resultSet.getString(i));
+             }
+         }
+     }catch(Exception e){
+         System.out.println("Errore nella connessione: " + e);
+         System.exit(1);
+     }
+     finally{
+         if(connessione != null){
+             try{
+                 connessione.close();
+             }catch(Exception e){
+                 System.out.println("Errore nella chiusura della connessione");
+             }
+         }
+     } 
+            }                   
+    private void dbJ(String fileRequested)throws SQLException{
+        persona p = new persona();
+        System.setProperty("jdbc.drivers", "sun.jdbc.odbc.JdbcOdbcDriver");
+        
+        String URL_miodb = "jdbc:mysql://localhost:3306/db?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC";
+        String query = "SELECT nome, cognome FROM bd;";
+        Connection connessione = null;
+        System.out.println("Connessione con: " + URL_miodb);
+        try{
+        connessione = DriverManager.getConnection(URL_miodb, "root", "albania02");
+        }catch(Exception e){
+         System.out.println("Errore : " + e);
+         System.exit(1);
+     }
+     
+     try{
+         Statement state = connessione.createStatement();
+         ResultSet resultSet = state.executeQuery(query);
+         System.out.println(resultSet);
+       while (resultSet.next()) {
+             for (int i = 1; i <= 2; i++){
+                ObjectMapper objectMapper = new ObjectMapper();
+                            objectMapper.writeValue(new File("dbjson.json"), resultSet.getString(i));
+             }
+         }
+     }catch(Exception e){
+         System.out.println("Errore nella connessione: " + e);
+         System.exit(1);
+     }
+     finally{
+         if(connessione != null){
+             try{
+                 connessione.close();
+             }catch(Exception e){
+                 System.out.println("Errore nella chiusura della connessione");
+            }
+        }
+    }  
+    }
+    private void dbX(String fileRequested)throws SQLException{
+                               persona p = new persona();
+        System.setProperty("jdbc.drivers", "sun.jdbc.odbc.JdbcOdbcDriver");
+        
+        String URL_miodb = "jdbc:mysql://localhost:3306/db?useUnicode=true&useJDBCCompliantTimezoneShift=true&useLegacyDatetimeCode=false&serverTimezone=UTC";
+        String query = "SELECT nome, cognome FROM bd;";
+        Connection connessione = null;
+     System.out.println("Connessione con: " + URL_miodb);
+     try{
+        connessione = DriverManager.getConnection(URL_miodb, "root", "albania02");
+     }catch(Exception e){
+         System.out.println("Errore : " + e);
+         System.exit(1);
+     }
+     
+     try{
+         Statement state = connessione.createStatement();
+         ResultSet resultSet = state.executeQuery(query);
+         System.out.println(resultSet);
+       while (resultSet.next()) {
+            for (int i = 1; i <= 2; i++){
+                 XMLEncoder encoder = new XMLEncoder(new BufferedOutputStream(new FileOutputStream("dbxml.xml")));
+                            encoder.writeObject(resultSet.getString(i));
+                            encoder.close();
+            }
+        }
+     }catch(Exception e){
+         System.out.println("Errore nella connessione: " + e);
+         System.exit(1);
+     }
+     finally{
+         if(connessione != null){
+             try{
+                 connessione.close();
+             }catch(Exception e){
+                 System.out.println("Errore nella chiusura della connessione");
+                }  
+            }
+        }
+        
+    }
 }
